@@ -1,0 +1,10 @@
+{
+	"paths": [
+
+		{
+			"knee": "D:\\Data\\NYU_FastMRI\\Knee_MRI",
+			"brain": "D:\\Data\\NYU_FastMRI\\Brain_MRI",
+			"experiments": "D:\\Experiments"
+		}
+	]
+}
