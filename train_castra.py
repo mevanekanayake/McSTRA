@@ -2,12 +2,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-# from utils_new.evaluate import SSIMLoss
-from utils_new.data import SliceDataset
-from utils_new.data import fetch_dir_new
-from utils_new.mask import create_mask_for_mask_type, worker_init_fn
-from utils_new.transform_castra_final_ht7 import CASTRADataTransform, make_ht_masks
-from utils_new.manager import RunManager, set_seed, set_logger
+from utils.data import SliceDataset, fetch_dir
+from utils.mask import create_mask_for_mask_type, worker_init_fn
+from utils.transforms import DataTransform, make_ht_masks
+from utils.manager import RunManager, set_seed, set_logger
+from utils.fourier import ifft
 
 from tqdm import tqdm
 from datetime import datetime
@@ -15,18 +14,8 @@ import platform
 import os
 import argparse
 from pathlib import Path
-import random
 
-from models.castra_final_ht7 import CASTRA
-
-from packaging import version
-
-if version.parse(torch.__version__) >= version.parse("1.7.0"):
-    from utils_new.fourier import fft2c_new as fft2c
-    from utils_new.fourier import ifft2c_new as ifft2c
-else:
-    from utils_new.fourier import fft2c_old as fft2c
-    from utils_new.fourier import ifft2c_old as ifft2c
+from models.mcstra import McSTRA
 
 
 def train_castra_():
@@ -74,9 +63,9 @@ def train_castra_():
     set_seed(seed=42, deterministic=1)  # set deterministic to 1 if the input size remains same
 
     # SET PATHS
-    data_path = fetch_dir_new(node=platform.node()[:2], what_path=args.anatomy, data_config_file="paths.json")
+    data_path = fetch_dir(node=platform.node()[:2], what_path=args.anatomy, data_config_file="paths.json")
     folder_name = "Experiment_" + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    experiments_path = fetch_dir_new(node=platform.node()[:2], what_path='experiments', data_config_file="paths.json", folder=folder_name)
+    experiments_path = fetch_dir(node=platform.node()[:2], what_path='experiments', data_config_file="paths.json", folder=folder_name)
     if not os.path.isdir(experiments_path):
         os.makedirs(experiments_path)  # create the experiments_path if it does not exist
 
@@ -88,7 +77,7 @@ def train_castra_():
     logger.info(f'experiments_path = {str(experiments_path)}')
 
     # LOAD MODEL
-    model = CASTRA(args)
+    model = McSTRA(args)
     model.load_state_dict(ckpt['model_state_dict']) if args.checkpoint else None
     logger.info(f'No. of trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
 
@@ -111,7 +100,7 @@ def train_castra_():
 
     # LOAD TRAINING DATA
     # use random masks for train transform, fixed masks for val transform
-    train_transform = CASTRADataTransform(which_challenge=args.challenge,
+    train_transform = DataTransform(which_challenge=args.challenge,
                                           mask_func=mask,
                                           use_seed=False)
     print('Gathering training data ...')
@@ -129,7 +118,7 @@ def train_castra_():
     logger.info(f'Training set gathered: No. of volumes: {len(set([fl[0] for fl in train_loader.dataset.examples]))} | No. of slices: {len(train_set)}')
 
     # LOAD VALIDATION DATA
-    val_transform = CASTRADataTransform(which_challenge=args.challenge,
+    val_transform = DataTransform(which_challenge=args.challenge,
                                         mask_func=mask)
     print('Gathering validation data ...')
     val_set = SliceDataset(root=data_path / f"{args.challenge}_val",
@@ -146,9 +135,7 @@ def train_castra_():
 
     # LOSS FUNCTION
     logger.info(f'Loss function: SSIM loss, L1 loss, L2 loss')  # change this line manually if you change the loss function
-    # loss_SSIM = SSIMLoss().to(args.device)
     loss_L1 = nn.L1Loss()
-    # loss_L2 = nn.MSELoss()
 
     # SET OPTIMIZER & SCHEDULER
     logger.info(f'Optimizer: RMSprop')  # change this line manually if you change the optimizer
@@ -189,40 +176,17 @@ def train_castra_():
                 head_ips = []
                 head_targets = []
 
-                import matplotlib.pyplot as plt
-                plt.imshow(target1[0,0].detach().cpu(), cmap='gray')
-                plt.show()
-
                 # condition input
                 for ht in range(args.num_hts):
                     kspace = kspace_und * ht_masks[ht].to(args.device).unsqueeze(0).unsqueeze(0)
-                    image = ifft2c(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                    image = ifft(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
                     head_ips.append(image)
 
                 # condition target
                 for ht in range(args.num_hts):
                     kspace = kspace_ori * ht_masks[ht].to(args.device).unsqueeze(0).unsqueeze(0)
-                    target = ifft2c(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                    target = ifft(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
                     head_targets.append(target)
-
-                # import matplotlib.pyplot as plt
-                # from utils.transform import complex_abs
-                # plot_list = [complex_abs(head_ips[0][1].detach().cpu().permute(1, 2, 0)),
-                #              complex_abs(head_targets[0][1].detach().cpu().permute(1, 2, 0)),
-                #              complex_abs(head_ips[1][1].detach().cpu().permute(1, 2, 0)),
-                #              complex_abs(head_targets[1][1].detach().cpu().permute(1, 2, 0)),
-                #              complex_abs(head_ips[2][1].detach().cpu().permute(1, 2, 0)),
-                #              complex_abs(head_targets[2][1].detach().cpu().permute(1, 2, 0))
-                #              ]
-                #
-                # for i, ht_mask in enumerate(plot_list):
-                #     ax = plt.imshow(ht_mask.detach().cpu(), cmap='gray')
-                #     ax.axes.get_xaxis().set_visible(False)
-                #     ax.axes.get_yaxis().set_visible(False)
-                #     ax = plt.show()
-                #     # from pathlib import Path
-                #     # figure_path = Path('D:\\TMI\\figures')
-                #     # plt.savefig(f'{figure_path}/ht7_{i}.png', format='png', bbox_inches='tight', dpi=600)
 
                 optimizer.zero_grad()
                 outputs = model(head_ips, kspace_und, mask, masked_psf)
@@ -278,13 +242,13 @@ def train_castra_():
                     # condition input
                     for ht in range(args.num_hts):
                         kspace = kspace_und * ht_masks[ht].to(args.device).unsqueeze(0).unsqueeze(0)
-                        image = ifft2c(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                        image = ifft(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
                         head_ips.append(image)
 
                     # condition target
                     for ht in range(args.num_hts):
                         kspace = kspace_ori * ht_masks[ht].to(args.device).unsqueeze(0).unsqueeze(0)
-                        target = ifft2c(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                        target = ifft(kspace.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
                         head_targets.append(target)
 
                     optimizer.zero_grad()

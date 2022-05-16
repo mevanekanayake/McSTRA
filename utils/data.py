@@ -4,9 +4,7 @@ import pickle
 import xml.etree.ElementTree as etree
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
-from warnings import warn
 import h5py
-import yaml
 import random
 import numpy as np
 import torch
@@ -49,49 +47,6 @@ def et_query(
 
 
 def fetch_dir(
-        key: str, data_config_file: Union[str, Path, os.PathLike] = "fastmri_dirs.yaml"
-) -> Path:
-    """
-    Data directory fetcher.
-
-    This is a brute-force simple way to configure data directories for a
-    project. Simply overwrite the variables for `knee_path` and `brain_path`
-    and this function will retrieve the requested subsplit of the data for use.
-
-    Args:
-        key: key to retrieve path from data_config_file. Expected to be in
-            ("knee_path", "brain_path", "log_path").
-        data_config_file: Optional; Default path config file to fetch path
-            from.
-
-    Returns:
-        The path to the specified directory.
-    """
-    data_config_file = Path(data_config_file)
-    if not data_config_file.is_file():
-        default_config = {
-            "knee_path": "/path/to/knee",
-            "brain_path": "/path/to/brain",
-            "log_path": ".",
-        }
-        with open(data_config_file, "w") as f:
-            yaml.dump(default_config, f)
-
-        data_dir = default_config[key]
-
-        warn(
-            f"Path config at {data_config_file.resolve()} does not exist. "
-            "A template has been created for you. "
-            "Please enter the directory paths for your system to have defaults."
-        )
-    else:
-        with open(data_config_file, "r") as f:
-            data_dir = yaml.safe_load(f)[key]
-
-    return Path(data_dir)
-
-
-def fetch_dir_new(
         node: str, what_path: str, data_config_file, folder=None) -> Path:
     """
     Data directory fetcher.
@@ -114,8 +69,7 @@ def fetch_dir_new(
 
     fetched_path = None
     for path_details in f['paths']:
-        if path_details['node'] == node:
-            fetched_path = path_details[what_path]
+        fetched_path = path_details[what_path]
 
     if folder is not None:
         fetched_path = os.path.join(fetched_path, folder)
@@ -384,17 +338,4 @@ class SliceDataset(torch.utils.data.Dataset):
 
         return sample
 
-
-def GetOneSlice(root, slice_ind, challenge):
-
-    recons_key = ("reconstruction_esc" if challenge == "singlecoil" else "reconstruction_rss")
-
-    fpath = Path(root)
-
-    with h5py.File(fpath, "r") as hf:
-        kspace = hf["kspace"][slice_ind]
-        target = hf[recons_key][slice_ind] if recons_key in hf else None
-        attrs = dict(hf.attrs)
-
-    return kspace, target, attrs
 

@@ -3,7 +3,7 @@ from collections import defaultdict, OrderedDict
 import time
 import numpy as np
 import torch
-from utils_new import evaluate
+from utils import evaluate
 import random
 import logging
 import sys

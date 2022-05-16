@@ -1,19 +1,9 @@
-import torch.utils.checkpoint as checkpoint
-from einops import rearrange
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import torch
 import torch.nn as nn
-from packaging import version
-from utils_new.math import complex_abs
-from utils_new.transform import normalize, unnormalize
-
-if version.parse(torch.__version__) >= version.parse("1.7.0"):
-    from utils_new.fourier import fft2c_new as fft2c
-    from utils_new.fourier import ifft2c_new as ifft2c
-else:
-    from utils_new.fourier import fft2c_old as fft2c
-    from utils_new.fourier import ifft2c_old as ifft2c
-
+from utils.math import complex_abs
+from utils.fourier import fft, ifft
+from einops import rearrange
+from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -806,7 +796,7 @@ class SwinTransformerSys(nn.Module):
         return flops
 
 
-class CASTRA(nn.Module):
+class McSTRA(nn.Module):
 
     def __init__(self, args):
         super().__init__()
@@ -911,8 +901,8 @@ class DCBlock(nn.Module):
         self.unsampled = unsampled
 
     def forward(self, output, kspace, mask):
-        output_kspace = fft2c(output.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        output_kspace = fft(output.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
         output_kscorr = (1 - mask) * output_kspace + mask * kspace
-        output_iscorr = ifft2c(output_kscorr.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        output_iscorr = ifft(output_kscorr.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
         return output_iscorr
