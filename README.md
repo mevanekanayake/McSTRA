@@ -76,4 +76,4 @@ python train_mcstra.py --batch_size=8 --num_epochs=50 --tvsr=1. --vvsr=1. --num_
 
 
 ## Citing Our Work
-Please cite:
+Please cite: M. Ekanayake, K. Pawar, M. Harandi, G. Egan, and Z. Chen, Multi-branch Cascaded Swin Transformers with Attention to k-space Sampling Pattern for Accelerated MRI Reconstruction. 2022. https://arxiv.org/abs/2207.08412
